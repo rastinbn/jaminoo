@@ -112,6 +112,15 @@ app.prepare().then(() => {
 
   io.on('connection', (socket) => {
     const userId = socket.data.userId;
+    const typingAt = new Map();
+
+    const allowTyping = (key) => {
+      const now = Date.now();
+      const previous = typingAt.get(key) || 0;
+      if (now - previous < 700) return false;
+      typingAt.set(key, now);
+      return true;
+    };
 
     const livePositionMs = (jam) => {
       if (jam.currentPlaying && jam.currentStartedAt) {
@@ -520,7 +529,10 @@ app.prepare().then(() => {
     });
 
     socket.on('jam:leave', (jamId) => {
-      if (typeof jamId === 'string' && jamId) socket.leave(`jam:${jamId}`);
+      if (typeof jamId === 'string' && jamId) {
+        leaveVoice(jamId);
+        socket.leave(`jam:${jamId}`);
+      }
     });
 
     const voiceRoster = (jamId) => {
@@ -535,14 +547,21 @@ app.prepare().then(() => {
       peers.delete(socket.id);
       if (peers.size === 0) voicePeers.delete(jamId);
       if (socket.data.voiceJams) socket.data.voiceJams.delete(jamId);
-      socket.to(`jam:${jamId}`).emit('voice:update', { jamId, members: voiceRoster(jamId) });
+      const roster = voiceRoster(jamId);
+      for (const socketId of peers?.keys() ?? []) {
+        io.to(socketId).emit('voice:update', { jamId, members: roster });
+      }
     };
 
     socket.on('voice:join', async (jamId) => {
       if (typeof jamId !== 'string' || !jamId) return;
       try {
         const member = await prisma.jamMember.findUnique({ where: { jamId_userId: { jamId, userId } } });
-        if (!member) return;
+        if (!member) {
+          socket.emit('voice:error', { jamId, message: 'You are not in this jam' });
+          return;
+        }
+        socket.join(`jam:${jamId}`);
         let peers = voicePeers.get(jamId);
         if (!peers) {
           peers = new Map();
@@ -553,7 +572,9 @@ app.prepare().then(() => {
         socket.data.voiceJams.add(jamId);
         const roster = voiceRoster(jamId);
         socket.emit('voice:members', { jamId, members: roster });
-        socket.to(`jam:${jamId}`).emit('voice:update', { jamId, members: roster });
+        for (const socketId of peers.keys()) {
+          if (socketId !== socket.id) io.to(socketId).emit('voice:update', { jamId, members: roster });
+        }
       } catch (e) {
         console.error('voice:join error:', e && e.message);
       }
@@ -574,7 +595,9 @@ app.prepare().then(() => {
       m.muted = d.muted;
       socket.data.voiceMuted = d.muted;
       const roster = voiceRoster(d.jamId);
-      socket.to(`jam:${d.jamId}`).emit('voice:update', { jamId: d.jamId, members: roster });
+      for (const socketId of peers.keys()) {
+        if (socketId !== socket.id) io.to(socketId).emit('voice:update', { jamId: d.jamId, members: roster });
+      }
     });
 
     socket.on('voice:leave', (jamId) => {
@@ -584,6 +607,7 @@ app.prepare().then(() => {
     socket.on('typing', async (d) => {
       if (!d || typeof d !== 'object') return;
       if (d.jam && typeof d.jam === 'string') {
+        if (!allowTyping(`jam:${d.jam}`)) return;
         try {
           const member = await prisma.jamMember.findUnique({ where: { jamId_userId: { jamId: d.jam, userId } } });
           if (!member) return;
@@ -595,6 +619,7 @@ app.prepare().then(() => {
       if (d.dm && typeof d.dm !== 'object' && Number.isFinite(Number(d.dm))) {
         const otherId = Number(d.dm);
         if (!Number.isInteger(otherId) || otherId === userId) return;
+        if (!allowTyping(`dm:${otherId}`)) return;
         try {
           const rel = await prisma.friendRequest.findFirst({
             where: { status: 'FRIENDS', OR: [{ fromId: userId, toId: otherId }, { fromId: otherId, toId: userId }] },
@@ -617,6 +642,7 @@ app.prepare().then(() => {
       if (socket.data.voiceJams && socket.data.voiceJams.size) {
         for (const jamId of [...socket.data.voiceJams]) leaveVoice(jamId);
       }
+      typingAt.clear();
     });
   });
 

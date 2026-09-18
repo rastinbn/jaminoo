@@ -11,6 +11,7 @@ import { HubGateway } from '@/components/hub-gateway';
 import { MusicHub } from '@/components/music-hub';
 import { VideoHub } from '@/components/video-hub';
 import { CinemaHub } from '@/components/cinema-hub';
+import { TweetHub } from '@/components/tweet-hub';
 import { LandingPage } from '@/components/landing-page';
 import { useSyncRouting } from '@/lib/sync-routing';
 
@@ -54,7 +55,7 @@ export function AppShell() {
       <AnimatePresence mode="wait">
         {me ? (
           <motion.div key="panel" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>
-            {product === 'home' ? <HubGateway /> : product === 'music' ? <MusicHub /> : product === 'video' ? <VideoHub /> : product === 'cinema' ? <CinemaHub /> : <PanelShell />}
+            {product === 'home' ? <HubGateway /> : product === 'music' ? <MusicHub /> : product === 'video' ? <VideoHub /> : product === 'cinema' ? <CinemaHub /> : product === 'tweet' ? <TweetHub /> : <PanelShell />}
           </motion.div>
         ) : (
           <motion.div key="auth" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.2 }}>

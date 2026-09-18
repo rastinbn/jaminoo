@@ -2,6 +2,7 @@ import { handle, json, err, requireUser } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
 import { livePublish } from '@/lib/live-publish';
 import { msgPayload, storeVoice } from '@/lib/messages';
+import { guardVoiceMessage } from '@/lib/chat-moderation';
 
 type Ctx = { params: { id: string } };
 
@@ -24,6 +25,7 @@ export const POST = handle(async (req, { params }: Ctx) => {
   const jam = await prisma.jam.findUnique({ where: { id: params.id }, include: { members: true } });
   if (!jam) return err('Jam not found', 404);
   if (!jam.members.some((m) => m.userId === me.id)) return err('You are not in this jam', 403);
+  guardVoiceMessage(req, me.id);
 
   const form = await req.formData();
   const file = form.get('voice');

@@ -17,6 +17,7 @@ import { api } from '@/lib/client-api';
 import { connectLive, emitLive, emitWhenConnected, onLive, onLiveConnect, liveConnected, liveSocketId } from '@/lib/live';
 import { toast } from '@/components/toast';
 import { JamWorldPanel } from '@/components/jam-world-panel';
+import { ReportMessageModal } from '@/components/report-message-modal';
 import { ArrowLeft, Globe, Lock, Users as UsersIcon, UserPlus, LogOut, LockOpen, Ban, Copy, User, Music2, Film, Hammer, Trash2, MessageCircle, Flag } from 'lucide-react';
 
 interface ChatUser {
@@ -73,6 +74,8 @@ export function RoomPanel({ jamId, onBack }: { jamId: string; onBack: () => void
   const [friends, setFriends] = useState<ChatUser[]>([]);
   const [live, setLive] = useState(false);
   const [sendingVoice, setSendingVoice] = useState(false);
+  const [sendingText, setSendingText] = useState(false);
+  const [reportMessageId, setReportMessageId] = useState<number | null>(null);
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [mobilePane, setMobilePane] = useState<'chat' | 'members' | 'music'>('chat');
@@ -178,10 +181,14 @@ export function RoomPanel({ jamId, onBack }: { jamId: string; onBack: () => void
   }, [jam]);
 
   const sendText = async (text: string) => {
+    if (sendingText) return;
+    setSendingText(true);
     try {
       await api(`/api/jams/${jamId}/messages`, { method: 'POST', body: JSON.stringify({ text }) });
     } catch (err) {
       toast(err instanceof Error ? err.message : t('toast.unknownError'), 'error');
+    } finally {
+      setSendingText(false);
     }
   };
 
@@ -304,9 +311,7 @@ export function RoomPanel({ jamId, onBack }: { jamId: string; onBack: () => void
         icon: <Flag size={14} />,
         label: 'Report message',
         onClick: () => {
-          api('/api/reports', { method: 'POST', body: JSON.stringify({ jamMessageId: m.id, reason: 'Reported by member' }) })
-            .then(() => toast('Message reported.', 'ok'))
-            .catch((err) => toast(err instanceof Error ? err.message : t('toast.unknownError'), 'error'));
+            setReportMessageId(m.id);
         },
       });
     }
@@ -332,7 +337,7 @@ export function RoomPanel({ jamId, onBack }: { jamId: string; onBack: () => void
           </div>
         ))}
       </div>
-      <MessageComposer placeholder={t('room.messagePlaceholder')} onSendText={sendText} onSendVoice={sendVoice} onTyping={onTyping} busy={sendingVoice} />
+      <MessageComposer placeholder={t('room.messagePlaceholder')} onSendText={sendText} onSendVoice={sendVoice} onTyping={onTyping} busy={sendingVoice || sendingText} />
     </div>
   );
 
@@ -505,7 +510,7 @@ export function RoomPanel({ jamId, onBack }: { jamId: string; onBack: () => void
             onSendText={sendText}
             onSendVoice={sendVoice}
             onTyping={onTyping}
-            busy={sendingVoice}
+            busy={sendingVoice || sendingText}
           />
         </main>
 
@@ -562,6 +567,7 @@ export function RoomPanel({ jamId, onBack }: { jamId: string; onBack: () => void
       )}
 
       {menu && <ContextMenu menu={menu} onClose={closeCm} />}
+      {reportMessageId != null && <ReportMessageModal target={{ jamMessageId: reportMessageId }} onClose={() => setReportMessageId(null)} />}
     </div>
   );
 }

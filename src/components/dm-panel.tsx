@@ -13,6 +13,7 @@ import { api } from '@/lib/client-api';
 import { connectLive, emitLive, onLive, liveSocketId, liveConnected } from '@/lib/live';
 import { toast } from '@/components/toast';
 import { loadUnread } from '@/lib/unread';
+import { ReportMessageModal } from '@/components/report-message-modal';
 import { ArrowLeft, Copy, User, Check, CheckCheck, Flag } from 'lucide-react';
 
 interface ChatUser {
@@ -50,6 +51,8 @@ export function DmPanel({ otherId, onBack }: { otherId: number; onBack: () => vo
   const [convo, setConvo] = useState<ConvoData | null>(null);
   const [live, setLive] = useState(false);
   const [sendingVoice, setSendingVoice] = useState(false);
+  const [sendingText, setSendingText] = useState(false);
+  const [reportMessageId, setReportMessageId] = useState<number | null>(null);
   const [typingUser, setTypingUser] = useState<string | null>(null);
   const typingTimer = useRef<number | null>(null);
   const otherNameRef = useRef('');
@@ -130,11 +133,15 @@ export function DmPanel({ otherId, onBack }: { otherId: number; onBack: () => vo
   }, [convo]);
 
   const sendText = async (text: string) => {
+    if (sendingText) return;
+    setSendingText(true);
     try {
       await api(`/api/dm/${otherId}/send`, { method: 'POST', body: JSON.stringify({ text }) });
       loadUnread();
     } catch (err) {
       toast(err instanceof Error ? err.message : t('toast.unknownError'), 'error');
+    } finally {
+      setSendingText(false);
     }
   };
 
@@ -200,9 +207,7 @@ export function DmPanel({ otherId, onBack }: { otherId: number; onBack: () => vo
         icon: <Flag size={14} />,
         label: 'Report message',
         onClick: () => {
-          api('/api/reports', { method: 'POST', body: JSON.stringify({ dmMessageId: m.id, reason: 'Reported by member' }) })
-            .then(() => toast('Message reported.', 'ok'))
-            .catch((err) => toast(err instanceof Error ? err.message : t('toast.unknownError'), 'error'));
+          setReportMessageId(m.id);
         },
       });
     }
@@ -273,10 +278,11 @@ export function DmPanel({ otherId, onBack }: { otherId: number; onBack: () => vo
         onSendText={sendText}
         onSendVoice={sendVoice}
         onTyping={onTyping}
-        busy={sendingVoice}
+        busy={sendingVoice || sendingText}
       />
 
       {menu && <ContextMenu menu={menu} onClose={closeCm} />}
+      {reportMessageId != null && <ReportMessageModal target={{ dmMessageId: reportMessageId }} onClose={() => setReportMessageId(null)} />}
     </div>
   );
 }

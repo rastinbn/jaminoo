@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, MicOff, PhoneOff, Volume2 } from 'lucide-react';
-import { connectLive, emitWhenConnected, liveSocketId, onLive } from '@/lib/live';
+import { connectLive, emitLive, emitWhenConnected, liveConnected, liveSocketId, onLive } from '@/lib/live';
 import { useAppStore } from '@/store/app-store';
 import { JaminoAvatar } from '@/components/jamino-avatar';
 import { useTranslations } from '@/providers/use-translations';
@@ -38,6 +38,8 @@ export function RoomVoiceChat({ jamId, members }: RoomVoiceChatProps) {
   const [error, setError] = useState<string | null>(null);
 
   const rosterRef = useRef<VoiceMember[]>([]);
+  const joinedRef = useRef(false);
+  const connectedOnceRef = useRef(false);
   const localStreamRef = useRef<MediaStream | null>(null);
   const peersRef = useRef<Record<string, RTCPeerConnection>>({});
   const pendingRef = useRef<Record<string, RTCIceCandidateInit[]>>({});
@@ -48,6 +50,10 @@ export function RoomVoiceChat({ jamId, members }: RoomVoiceChatProps) {
   useEffect(() => {
     rosterRef.current = roster;
   }, [roster]);
+
+  useEffect(() => {
+    joinedRef.current = joined;
+  }, [joined]);
 
   const teardown = useCallback(() => {
     localStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -119,6 +125,7 @@ export function RoomVoiceChat({ jamId, members }: RoomVoiceChatProps) {
   const attachAnalyser = useCallback(
     (sid: string, stream: MediaStream) => {
       if (typeof AudioContext === 'undefined') return;
+      detachAnalyser(sid);
       if (!audioCtxRef.current) audioCtxRef.current = new AudioContext();
       const ctx = audioCtxRef.current;
       if (ctx.state === 'suspended') ctx.resume().catch(() => {});
@@ -129,7 +136,7 @@ export function RoomVoiceChat({ jamId, members }: RoomVoiceChatProps) {
       analysersRef.current.set(sid, an);
       startAnalyserLoop();
     },
-    [startAnalyserLoop]
+    [detachAnalyser, startAnalyserLoop]
   );
 
   const closePeer = useCallback(
@@ -160,10 +167,26 @@ export function RoomVoiceChat({ jamId, members }: RoomVoiceChatProps) {
     [detachAnalyser]
   );
 
+  const resetPeers = useCallback(() => {
+    Object.entries(peersRef.current).forEach(([sid, pc]) => {
+      try {
+        pc.close();
+      } catch (e) {
+        console.error('voice pc close', e);
+      }
+      detachAnalyser(sid);
+    });
+    peersRef.current = {};
+    pendingRef.current = {};
+    setStreams({});
+    setSpeaking({});
+  }, [detachAnalyser]);
+
   const ensurePeer = useCallback(
     (target: VoiceMember, wait = false) => {
       const myId = liveSocketId();
       if (!myId || myId === target.socketId) return;
+      if (!joinedRef.current || !localStreamRef.current) return;
       if (peersRef.current[target.socketId]) return;
 
       const pc = new RTCPeerConnection({ iceServers: ICE });
@@ -184,14 +207,14 @@ export function RoomVoiceChat({ jamId, members }: RoomVoiceChatProps) {
 
       pc.ontrack = (ev) => {
         if (ev.track.kind !== 'audio') return;
-        const stream = new MediaStream([ev.track]);
+        const stream = ev.streams[0] ?? new MediaStream([ev.track]);
         setStreams((prev) => ({ ...prev, [target.socketId]: { userId: target.userId, stream } }));
         attachAnalyser(target.socketId, stream);
         ev.track.onended = () => closePeer(target.socketId);
       };
 
       pc.onconnectionstatechange = () => {
-        if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected' || pc.connectionState === 'closed') {
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
           closePeer(target.socketId);
         }
       };
@@ -215,19 +238,40 @@ export function RoomVoiceChat({ jamId, members }: RoomVoiceChatProps) {
     const pc = peersRef.current[sid];
     const pending = pendingRef.current[sid];
     if (!pc || !pending) return;
-    pendingRef.current[sid] = [];
+    delete pendingRef.current[sid];
     pending.forEach((candidate) => pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {}));
   }, []);
 
   useEffect(() => {
-    connectLive();
+    const socket = connectLive();
+    connectedOnceRef.current = liveConnected();
+    const onConnect = () => {
+      const reconnecting = connectedOnceRef.current;
+      connectedOnceRef.current = true;
+      if (reconnecting && joinedRef.current) {
+        resetPeers();
+        setRoster([]);
+        rosterRef.current = [];
+        emitLive('voice:join', jamId);
+      }
+    };
+    const onDisconnect = () => {
+      if (!joinedRef.current) return;
+      resetPeers();
+      setRoster([]);
+      rosterRef.current = [];
+    };
+    const onConnectError = () => setError(t('room.voiceConnection'));
+    socket?.on('connect', onConnect);
+    socket?.on('disconnect', onDisconnect);
+    socket?.on('connect_error', onConnectError);
     const offUpdate = onLive('voice:update', (data: any) => {
       if (data?.jamId !== jamId) return;
       const list: VoiceMember[] = data.members ?? [];
       setRoster(list);
       rosterRef.current = list;
       list.forEach((mb) => {
-        if (mb.socketId !== liveSocketId()) ensurePeer(mb);
+        if (joinedRef.current && mb.socketId !== liveSocketId()) ensurePeer(mb);
       });
       const alive = new Set(list.map((x) => x.socketId));
       Object.keys(peersRef.current).forEach((sid) => {
@@ -240,11 +284,14 @@ export function RoomVoiceChat({ jamId, members }: RoomVoiceChatProps) {
       setRoster(list);
       rosterRef.current = list;
       list.forEach((mb) => {
-        if (mb.socketId !== liveSocketId()) ensurePeer(mb);
+        if (joinedRef.current && mb.socketId !== liveSocketId()) ensurePeer(mb);
       });
     });
+    const offError = onLive('voice:error', (data: any) => {
+      if (data?.jamId === jamId && data.message) setError(String(data.message));
+    });
     const offSignal = onLive('voice:signal', (data: any) => {
-      if (data?.jamId !== jamId || !data.from) return;
+      if (!joinedRef.current || data?.jamId !== jamId || !data.from) return;
       const payload = data.payload;
       if (!payload) return;
       if (!peersRef.current[data.from]) {
@@ -280,18 +327,29 @@ export function RoomVoiceChat({ jamId, members }: RoomVoiceChatProps) {
       }
     });
     return () => {
+      if (joinedRef.current) emitLive('voice:leave', jamId);
+      socket?.off('connect', onConnect);
+      socket?.off('disconnect', onDisconnect);
+      socket?.off('connect_error', onConnectError);
       offUpdate();
       offMembers();
+      offError();
       offSignal();
+      resetPeers();
     };
-  }, [jamId, ensurePeer, closePeer, flushPending]);
+  }, [jamId, ensurePeer, closePeer, flushPending, resetPeers]);
 
   const joinVoice = async () => {
-    if (joined) return;
+    if (joinedRef.current) return;
     setError(null);
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setError(t('room.voiceUnavailable'));
+        return;
+      }
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       localStreamRef.current = stream;
+      joinedRef.current = true;
       setJoined(true);
       setMuted(false);
       emitWhenConnected('voice:join', jamId);
@@ -311,7 +369,8 @@ export function RoomVoiceChat({ jamId, members }: RoomVoiceChatProps) {
   };
 
   const leaveVoice = () => {
-    emitWhenConnected('voice:leave', jamId);
+    joinedRef.current = false;
+    emitLive('voice:leave', jamId);
     teardown();
     setJoined(false);
     setRoster([]);

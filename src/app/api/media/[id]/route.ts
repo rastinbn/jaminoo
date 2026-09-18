@@ -18,12 +18,13 @@ async function canAccessMedia(meId: number, mediaId: string, isAdmin = false) {
       dmMessages: { select: { convId: true } },
       videoPosts: { where: { visibility: 'PUBLIC' }, select: { id: true } },
       videoThumbnails: { where: { visibility: 'PUBLIC' }, select: { id: true } },
+      tweets: { where: { visibility: 'PUBLIC' }, select: { id: true } },
     },
   });
   if (!media) return false;
   if (isAdmin) return true;
   if (media.userId === meId) return true;
-  if (media.videoPosts.length > 0 || media.videoThumbnails.length > 0) return true;
+  if (media.videoPosts.length > 0 || media.videoThumbnails.length > 0 || media.tweets.length > 0) return true;
 
   if (media.profileUser) {
     const otherId = media.profileUser.id;

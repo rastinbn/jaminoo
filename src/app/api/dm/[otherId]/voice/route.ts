@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { livePublish } from '@/lib/live-publish';
 import { getOrCreateConvo, areFriends } from '@/lib/dm';
 import { msgPayload, storeVoice } from '@/lib/messages';
+import { guardVoiceMessage } from '@/lib/chat-moderation';
 
 type Ctx = { params: { otherId: string } };
 
@@ -24,6 +25,7 @@ export const POST = handle(async (req, { params }: Ctx) => {
   const otherId = Number(params.otherId);
   if (!Number.isInteger(otherId) || otherId === me.id) return err('Invalid user');
   if (!(await areFriends(me.id, otherId))) return err('You can only chat with friends', 403);
+  guardVoiceMessage(req, me.id);
 
   const form = await req.formData();
   const file = form.get('voice');

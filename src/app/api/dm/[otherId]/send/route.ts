@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { livePublish } from '@/lib/live-publish';
 import { getOrCreateConvo, areFriends } from '@/lib/dm';
 import { msgPayload } from '@/lib/messages';
+import { guardTextMessage } from '@/lib/chat-moderation';
 
 type Ctx = { params: { otherId: string } };
 
@@ -27,6 +28,7 @@ export const POST = handle(async (req, { params }: Ctx) => {
   if (!text || !text.trim()) return err('Empty message');
   const textClean = text.trim().slice(0, 1000);
   if (!(await areFriends(me.id, otherId))) return err('You can only chat with friends', 403);
+  guardTextMessage(req, me.id, textClean);
 
   const conv = await getOrCreateConvo(me.id, otherId);
   const msg = await prisma.dmMessage.create({

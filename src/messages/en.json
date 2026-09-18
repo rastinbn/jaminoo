@@ -173,6 +173,8 @@
     "voiceYou": "You",
     "voiceUnknown": "…",
     "voiceDenied": "Microphone access was denied.",
+    "voiceUnavailable": "This browser cannot access a microphone.",
+    "voiceConnection": "Voice connection is unavailable. Try again.",
     "tabChat": "Chat",
     "tabMembers": "Members",
     "tabMusic": "Music",
@@ -196,6 +198,22 @@
     "send": "Send voice",
     "cancel": "Discard recording",
     "sending": "Sending voice…"
+  },
+  "report": {
+    "kicker": "SAFETY & REPORTS",
+    "title": "Report message",
+    "subtitle": "Choose the reason that best describes this message.",
+    "details": "Add context (optional)",
+    "detailsPlaceholder": "Tell us what happened…",
+    "submit": "Submit report",
+    "sending": "Sending…",
+    "sent": "Thanks. The message was reported for review.",
+    "spam": { "label": "Spam or advertising", "description": "Repeated, unwanted or promotional content." },
+    "harassment": { "label": "Harassment or bullying", "description": "Targeted abuse, threats or unwanted contact." },
+    "hate_or_violence": { "label": "Hate or violence", "description": "Hateful, violent or dangerous content." },
+    "sexual_content": { "label": "Sexual content", "description": "Explicit or inappropriate sexual material." },
+    "impersonation": { "label": "Impersonation", "description": "Someone is pretending to be another person." },
+    "other": { "label": "Something else", "description": "Another reason that needs our attention." }
   },
   "react": {
     "add": "React"

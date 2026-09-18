@@ -3,6 +3,7 @@ import { prisma } from '@/lib/prisma';
 import { pubUser } from '@/lib/users';
 import { livePublish } from '@/lib/live-publish';
 import { msgPayload } from '@/lib/messages';
+import { guardTextMessage } from '@/lib/chat-moderation';
 
 type Ctx = { params: { id: string } };
 
@@ -53,6 +54,7 @@ export const POST = handle(async (req, { params }: Ctx) => {
   const jam = await prisma.jam.findUnique({ where: { id: params.id }, include: { members: true } });
   if (!jam) return err('Jam not found', 404);
   if (!jam.members.some((m) => m.userId === me.id)) return err('You are not in this jam', 403);
+  guardTextMessage(req, me.id, textClean);
 
   const msg = await prisma.jamMessage.create({
     data: { jamId: jam.id, userId: me.id, kind: 'TEXT', text: textClean },

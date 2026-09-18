@@ -4,7 +4,7 @@ import { useAppStore, type HubProduct } from '@/store/app-store';
 import { useTranslations } from '@/providers/use-translations';
 import { JaminoAvatar } from '@/components/jamino-avatar';
 import { TopRightControls } from '@/components/top-controls';
-import { ArrowLeft, ArrowRight, House, Music2, PlaySquare, UsersRound, Clapperboard } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Bird, House, Music2, PlaySquare, UsersRound, Clapperboard } from 'lucide-react';
 import type { ReactNode } from 'react';
 import { GlobalSearch } from '@/components/global-search';
 import { NowFeed } from '@/components/now-feed';
@@ -14,6 +14,7 @@ const HUBS: { id: Exclude<HubProduct, 'home'>; icon: typeof Music2; title: strin
   { id: 'music', icon: Music2, title: 'Music Hub', description: 'A dedicated home for music, playlists and listening.', tone: 'music' },
   { id: 'video', icon: PlaySquare, title: 'Video Hub', description: 'A separate space for video discovery and watching.', tone: 'video' },
   { id: 'cinema', icon: Clapperboard, title: 'Cinema Hub', description: 'Movies, series and watch-together sessions.', tone: 'cinema' },
+  { id: 'tweet', icon: Bird, title: 'Tweet Hub', description: 'Share short thoughts, follow people and ride the trends.', tone: 'tweet' },
 ];
 
 export function WorkspaceTopbar({ onHome, product, children }: { onHome?: () => void; product?: string; children?: ReactNode }) {

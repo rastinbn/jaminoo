@@ -22,6 +22,7 @@ export function MessageComposer({ placeholder, onSendText, onSendVoice, onTyping
   const [emojiCat, setEmojiCat] = useState(0);
   const [rec, setRec] = useState<'idle' | 'rec' | 'busy'>('idle');
   const [seconds, setSeconds] = useState(0);
+  const [sendingText, setSendingText] = useState(false);
   const recRef = useRef<{ chunks: Blob[]; mr: MediaRecorder | null; stream: MediaStream | null; timer: number; start: number } | null>(null);
 
   useEffect(() => {
@@ -31,11 +32,16 @@ export function MessageComposer({ placeholder, onSendText, onSendVoice, onTyping
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!text.trim() || disabled) return;
+    if (!text.trim() || disabled || busy || sendingText) return;
     const clean = text.trim();
     setText('');
     setEmojiOpen(false);
-    await onSendText(clean);
+    setSendingText(true);
+    try {
+      await onSendText(clean);
+    } finally {
+      setSendingText(false);
+    }
   };
 
   const stopTracks = () => {
@@ -44,7 +50,7 @@ export function MessageComposer({ placeholder, onSendText, onSendVoice, onTyping
   };
 
   const startRec = async () => {
-    if (rec !== 'idle' || busy) return;
+    if (rec !== 'idle' || busy || sendingText) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mr = new MediaRecorder(stream);
@@ -172,7 +178,7 @@ export function MessageComposer({ placeholder, onSendText, onSendVoice, onTyping
             <Check size={15} />
           </button>
         </>
-      ) : busy ? (
+      ) : busy || sendingText ? (
         <button type="button" disabled className="btn btn-violet send-btn" title={t('voice.sending')}>
           <Square size={13} fill="currentColor" />
         </button>

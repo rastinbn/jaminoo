@@ -58,7 +58,15 @@ model User {
   moments           JamMoment[]
   collabSent        VideoCollabInvite[] @relation("CollabSent")
   collabReceived    VideoCollabInvite[] @relation("CollabReceived")
+<<<<<<< HEAD
   videoPlaylists    UserVideoPlaylist[]
+=======
+  tweets            Tweet[] @relation("UserTweets")
+  tweetLikes        TweetLike[] @relation("TweetLikes")
+  tweetBookmarks    TweetBookmark[] @relation("TweetBookmarks")
+  tweetFollowing    TweetFollow[] @relation("TweetFollowing")
+  tweetFollowers    TweetFollow[] @relation("TweetFollowers")
+>>>>>>> fb6cf56fec38de178bf77d7eb65dd9cadd4bd7f7
 }
 
 model Session {
@@ -168,6 +176,7 @@ model Media {
   dmMessages   DmMessage[] @relation("DmMedia")
   videoPosts   VideoPost[] @relation("VideoPostAsset")
   videoThumbnails VideoPost[] @relation("VideoPostThumbnail")
+  tweets      Tweet[] @relation("TweetMedia")
 }
 
 model Conversation {
@@ -615,4 +624,69 @@ model CinemaVideo {
   jams Jam[] @relation("JamCinemaVideo")
 
   @@index([kind, visibility, id])
+}
+
+model Tweet {
+  id           Int      @id @default(autoincrement())
+  authorId     Int
+  text         String   @default("")
+  mediaAssetId String?
+  replyToId    Int?
+  retweetOfId  Int?
+  visibility   String   @default("PUBLIC")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  author    User           @relation("UserTweets", fields: [authorId], references: [id], onDelete: Cascade)
+  media     Media?         @relation("TweetMedia", fields: [mediaAssetId], references: [id], onDelete: SetNull)
+  replyTo   Tweet?         @relation("TweetReplies", fields: [replyToId], references: [id], onDelete: Cascade)
+  replies   Tweet[]        @relation("TweetReplies")
+  retweetOf Tweet?         @relation("TweetRetweets", fields: [retweetOfId], references: [id], onDelete: Cascade)
+  retweets  Tweet[]        @relation("TweetRetweets")
+  likes     TweetLike[]
+  bookmarks TweetBookmark[]
+
+  @@index([authorId, createdAt])
+  @@index([visibility, id])
+  @@index([replyToId, createdAt])
+  @@index([retweetOfId, createdAt])
+}
+
+model TweetLike {
+  id        Int      @id @default(autoincrement())
+  tweetId   Int
+  userId    Int
+  createdAt DateTime @default(now())
+
+  tweet Tweet @relation(fields: [tweetId], references: [id], onDelete: Cascade)
+  user  User  @relation("TweetLikes", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tweetId, userId])
+  @@index([userId, createdAt])
+}
+
+model TweetBookmark {
+  id        Int      @id @default(autoincrement())
+  tweetId   Int
+  userId    Int
+  createdAt DateTime @default(now())
+
+  tweet Tweet @relation(fields: [tweetId], references: [id], onDelete: Cascade)
+  user  User  @relation("TweetBookmarks", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([tweetId, userId])
+  @@index([userId, createdAt])
+}
+
+model TweetFollow {
+  id          Int      @id @default(autoincrement())
+  followerId  Int
+  followingId Int
+  createdAt   DateTime @default(now())
+
+  follower User @relation("TweetFollowing", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("TweetFollowers", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@index([followingId, createdAt])
 }
