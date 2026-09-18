@@ -58,6 +58,7 @@ model User {
   moments           JamMoment[]
   collabSent        VideoCollabInvite[] @relation("CollabSent")
   collabReceived    VideoCollabInvite[] @relation("CollabReceived")
+  videoPlaylists    UserVideoPlaylist[]
 }
 
 model Session {
@@ -388,6 +389,33 @@ model UserMusicPlaylistItem {
   @@unique([playlistId, songId])
 }
 
+model UserVideoPlaylist {
+  id        Int      @id @default(autoincrement())
+  userId    Int
+  name      String
+  desc      String   @default("")
+  isPublic  Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user  User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items UserVideoPlaylistItem[]
+
+  @@unique([userId, name])
+}
+
+model UserVideoPlaylistItem {
+  id         Int @id @default(autoincrement())
+  playlistId Int
+  postId     Int
+  pos        Int @default(0)
+  createdAt  DateTime @default(now())
+
+  playlist UserVideoPlaylist @relation(fields: [playlistId], references: [id], onDelete: Cascade)
+  post     VideoPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([playlistId, postId])
+}
+
 model JamQueueVote {
   id          Int      @id @default(autoincrement())
   jamId       String
@@ -480,6 +508,7 @@ model VideoPost {
   comments VideoComment[]
   reports  MessageReport[]
   collabs  VideoCollabInvite[]
+  playlistItems UserVideoPlaylistItem[]
 
   @@index([kind, visibility, id])
   @@index([authorId, createdAt])
