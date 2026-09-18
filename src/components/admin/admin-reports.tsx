@@ -12,7 +12,7 @@ interface ReportRow {
   reason: string;
   createdAt: string;
   reporter: string;
-  kind: 'jam' | 'dm' | 'video';
+  kind: 'jam' | 'dm' | 'video' | 'tweet';
   message: { id: number; text?: string; title?: string; user?: { username: string }; sender?: { username: string }; author?: { username: string }; jam?: { name: string } } | null;
 }
 
@@ -60,7 +60,7 @@ export function AdminReports() {
             {!list.loading && list.rows.length === 0 && <EmptyRow text={t('admin.noReports')} />}
             {list.rows.map((row) => {
               const messageUser = row.message?.user?.username ?? row.message?.sender?.username ?? row.message?.author?.username ?? 'unknown';
-              const messageText = row.kind === 'video' ? `[${t('admin.video')}] ${row.message?.title || t('admin.untitled')}` : row.message?.text || `[${t('admin.voice')}]`;
+              const messageText = row.kind === 'video' ? `[${t('admin.video')}] ${row.message?.title || t('admin.untitled')}` : row.kind === 'tweet' ? `[tweet] ${row.message?.text || ''}` : row.message?.text || `[${t('admin.voice')}]`;
               return <tr key={row.id}>
                 <td className="admin-check-cell"><SelectCheckbox checked={selection.isSelected(row.id)} onChange={() => selection.toggle(row.id)} label={String(row.id)} /></td>
                 <td className="admin-mono"><Flag size={13} /> {row.id}</td>

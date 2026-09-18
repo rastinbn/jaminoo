@@ -1,64 +1,88 @@
 import { handle, json, requireUser } from '@/lib/api';
 import { prisma } from '@/lib/prisma';
-import { serializeTweetAuthor } from '@/lib/tweet';
 
-const ACTOR = { select: { id: true, username: true, avatarId: true, profilePhotoId: true, bio: true } };
+const KINDS = ['TWEET_LIKE', 'TWEET_RETWEET', 'TWEET_REPLY', 'TWEET_FOLLOW', 'TWEET_QUOTE', 'TWEET_MENTION'] as const;
 
-export const GET = handle(async () => {
+const TYPE_BY_KIND: Record<string, string> = {
+  TWEET_LIKE: 'like',
+  TWEET_RETWEET: 'retweet',
+  TWEET_REPLY: 'reply',
+  TWEET_FOLLOW: 'follow',
+  TWEET_QUOTE: 'quote',
+  TWEET_MENTION: 'mention',
+};
+
+export const GET = handle(async (req) => {
   const me = await requireUser();
-  const myTweets = await prisma.tweet.findMany({
-    where: { authorId: me.id },
-    select: { id: true, text: true },
-    orderBy: { id: 'desc' },
-    take: 200,
-  });
-  const ids = myTweets.map((t) => t.id);
+  const cursor = Number(new URL(req.url).searchParams.get('cursor') ?? 0);
+  const where: any = { userId: me.id, kind: { in: [...KINDS] } };
+  if (Number.isInteger(cursor) && cursor > 0) where.id = { lt: cursor };
 
-  const [likes, retweets, replies, follows] = await Promise.all([
-    ids.length > 0
-      ? prisma.tweetLike.findMany({
-          where: { tweetId: { in: ids }, userId: { not: me.id } },
-          include: { user: ACTOR, tweet: { select: { id: true, text: true } } },
-          orderBy: { id: 'desc' },
-          take: 30,
-        })
-      : [],
-    ids.length > 0
-      ? prisma.tweet.findMany({
-          where: { retweetOfId: { in: ids }, authorId: { not: me.id } },
-          include: { author: ACTOR, retweetOf: { select: { id: true, text: true } } },
-          orderBy: { id: 'desc' },
-          take: 30,
-        })
-      : [],
-    ids.length > 0
-      ? prisma.tweet.findMany({
-          where: { replyToId: { in: ids }, authorId: { not: me.id } },
-          include: { author: ACTOR, replyTo: { select: { id: true, text: true } } },
-          orderBy: { id: 'desc' },
-          take: 30,
-        })
-      : [],
-    prisma.tweetFollow.findMany({
-      where: { followingId: me.id, followerId: { not: me.id } },
-      include: { follower: ACTOR },
+  const [rows, unread] = await Promise.all([
+    prisma.notification.findMany({
+      where,
       orderBy: { id: 'desc' },
-      take: 30,
+      take: 25,
     }),
+    prisma.notification.count({ where: { userId: me.id, kind: { in: [...KINDS] }, readAt: null } }),
   ]);
 
-  const events: {
-    type: 'like' | 'retweet' | 'reply' | 'follow';
-    actor: ReturnType<typeof serializeTweetAuthor>;
-    tweetId: number | null;
-    tweetText: string;
-    createdAt: string;
-  }[] = [
-    ...likes.map((l) => ({ type: 'like' as const, actor: serializeTweetAuthor(l.user), tweetId: l.tweet.id, tweetText: l.tweet.text, createdAt: l.createdAt.toISOString() })),
-    ...retweets.map((r) => ({ type: 'retweet' as const, actor: serializeTweetAuthor(r.author), tweetId: r.retweetOf?.id ?? null, tweetText: r.retweetOf?.text ?? '', createdAt: r.createdAt.toISOString() })),
-    ...replies.map((r) => ({ type: 'reply' as const, actor: serializeTweetAuthor(r.author), tweetId: r.replyTo?.id ?? null, tweetText: r.text, createdAt: r.createdAt.toISOString() })),
-    ...follows.map((f) => ({ type: 'follow' as const, actor: serializeTweetAuthor(f.follower), tweetId: null, tweetText: '', createdAt: f.createdAt.toISOString() })),
-  ];
-  events.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
-  return json({ events: events.slice(0, 40) });
+  const userIds = Array.from(new Set(rows.map((n) => {
+    const payload = safePayload(n.payload);
+    return Number(payload.fromId ?? 0);
+  }).filter((id) => id > 0)));
+  const users = userIds.length > 0
+    ? await prisma.user.findMany({
+        where: { id: { in: userIds } },
+        select: { id: true, username: true, name: true, avatarId: true, profilePhotoId: true, bio: true, website: true, location: true },
+      })
+    : [];
+  const userMap = new Map(users.map((u) => [u.id, u]));
+
+  const hasMore = rows.length > 24;
+  const page = hasMore ? rows.slice(0, 24) : rows;
+
+  const events = page.map((n) => {
+    const payload = safePayload(n.payload);
+    const actor = userMap.get(Number(payload.fromId ?? 0));
+    return {
+      id: n.id,
+      type: TYPE_BY_KIND[n.kind] ?? 'reply',
+      readAt: n.readAt?.toISOString() ?? null,
+      createdAt: n.createdAt.toISOString(),
+      tweetId: payload.tweetId ? Number(payload.tweetId) : null,
+      tweetText: typeof payload.text === 'string' ? payload.text : '',
+      actor: actor
+        ? {
+            id: actor.id,
+            username: actor.username,
+            name: actor.name ?? '',
+            avatarId: actor.avatarId,
+            avatarPhoto: actor.profilePhotoId ? `/api/media/${actor.profilePhotoId}` : null,
+            bio: actor.bio ?? '',
+            website: actor.website ?? '',
+            location: actor.location ?? '',
+          }
+        : null,
+    };
+  });
+
+  return json({ events, nextCursor: hasMore ? String(page[page.length - 1].id) : null, hasMore, unread });
 });
+
+export const PATCH = handle(async () => {
+  const me = await requireUser();
+  await prisma.notification.updateMany({
+    where: { userId: me.id, kind: { in: [...KINDS] }, readAt: null },
+    data: { readAt: new Date() },
+  });
+  return json({ read: true });
+});
+
+function safePayload(raw: string) {
+  try {
+    return JSON.parse(raw || '{}') as Record<string, unknown>;
+  } catch {
+    return {} as Record<string, unknown>;
+  }
+}

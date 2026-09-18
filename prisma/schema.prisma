@@ -28,6 +28,12 @@ model User {
   profilePhotoId String?  @unique
   profilePhoto   Media?  @relation("ProfilePhoto", fields: [profilePhotoId], references: [id], onDelete: SetNull)
 
+  name         String    @default("")
+  website      String    @default("")
+  location     String    @default("")
+  bannerPhotoId String?   @unique
+  bannerPhoto  Media?     @relation("ProfileBanner", fields: [bannerPhotoId], references: [id], onDelete: SetNull)
+
   sessions        Session[]
   friendRequestsA FriendRequest[] @relation("FriendRequestA")
   friendRequestsB FriendRequest[] @relation("FriendRequestB")
@@ -58,15 +64,16 @@ model User {
   moments           JamMoment[]
   collabSent        VideoCollabInvite[] @relation("CollabSent")
   collabReceived    VideoCollabInvite[] @relation("CollabReceived")
-<<<<<<< HEAD
   videoPlaylists    UserVideoPlaylist[]
-=======
   tweets            Tweet[] @relation("UserTweets")
   tweetLikes        TweetLike[] @relation("TweetLikes")
   tweetBookmarks    TweetBookmark[] @relation("TweetBookmarks")
   tweetFollowing    TweetFollow[] @relation("TweetFollowing")
   tweetFollowers    TweetFollow[] @relation("TweetFollowers")
->>>>>>> fb6cf56fec38de178bf77d7eb65dd9cadd4bd7f7
+  tweetBlocks       TweetBlock[]  @relation("TweetBlocking")
+  tweetBlockedBy    TweetBlock[]  @relation("TweetBlocked")
+  tweetMutes        TweetMute[]   @relation("TweetMuting")
+  tweetMutedBy      TweetMute[]   @relation("TweetMuted")
 }
 
 model Session {
@@ -176,7 +183,8 @@ model Media {
   dmMessages   DmMessage[] @relation("DmMedia")
   videoPosts   VideoPost[] @relation("VideoPostAsset")
   videoThumbnails VideoPost[] @relation("VideoPostThumbnail")
-  tweets      Tweet[] @relation("TweetMedia")
+  bannerUser      User?      @relation("ProfileBanner")
+  tweetAssets     TweetAsset[]
 }
 
 model Conversation {
@@ -454,21 +462,25 @@ model Notification {
 }
 
 model MessageReport {
-  id           Int       @id @default(autoincrement())
-  reporterId   Int
-  jamMessageId Int?
-  dmMessageId  Int?
-  videoPostId  Int?
-  reason       String
-  status       String    @default("OPEN")
-  createdAt    DateTime  @default(now())
+  id             Int       @id @default(autoincrement())
+  reporterId     Int
+  jamMessageId   Int?
+  dmMessageId    Int?
+  videoPostId    Int?
+  tweetId        Int?
+  reason         String
+  reasonCategory String    @default("")
+  status         String    @default("OPEN")
+  createdAt      DateTime  @default(now())
 
   reporter   User        @relation(fields: [reporterId], references: [id], onDelete: Cascade)
   jamMessage JamMessage? @relation(fields: [jamMessageId], references: [id], onDelete: Cascade)
   dmMessage  DmMessage?  @relation(fields: [dmMessageId], references: [id], onDelete: Cascade)
   videoPost   VideoPost? @relation(fields: [videoPostId], references: [id], onDelete: Cascade)
+  tweet       Tweet?     @relation(fields: [tweetId], references: [id], onDelete: SetNull)
 
   @@index([status, createdAt])
+  @@index([tweetId, createdAt])
 }
 
 model CreatorApplication {
@@ -630,26 +642,30 @@ model Tweet {
   id           Int      @id @default(autoincrement())
   authorId     Int
   text         String   @default("")
-  mediaAssetId String?
   replyToId    Int?
   retweetOfId  Int?
+  quotedTweetId Int?
   visibility   String   @default("PUBLIC")
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  author    User           @relation("UserTweets", fields: [authorId], references: [id], onDelete: Cascade)
-  media     Media?         @relation("TweetMedia", fields: [mediaAssetId], references: [id], onDelete: SetNull)
-  replyTo   Tweet?         @relation("TweetReplies", fields: [replyToId], references: [id], onDelete: Cascade)
-  replies   Tweet[]        @relation("TweetReplies")
-  retweetOf Tweet?         @relation("TweetRetweets", fields: [retweetOfId], references: [id], onDelete: Cascade)
-  retweets  Tweet[]        @relation("TweetRetweets")
+  author    User          @relation("UserTweets", fields: [authorId], references: [id], onDelete: Cascade)
+  replyTo   Tweet?        @relation("TweetReplies", fields: [replyToId], references: [id], onDelete: Cascade)
+  replies   Tweet[]       @relation("TweetReplies")
+  retweetOf Tweet?        @relation("TweetRetweets", fields: [retweetOfId], references: [id], onDelete: Cascade)
+  retweets  Tweet[]       @relation("TweetRetweets")
+  quoted    Tweet?        @relation("TweetQuotes", fields: [quotedTweetId], references: [id], onDelete: SetNull)
+  quotes    Tweet[]       @relation("TweetQuotes")
+  assets    TweetAsset[]
   likes     TweetLike[]
   bookmarks TweetBookmark[]
+  reports   MessageReport[]
 
   @@index([authorId, createdAt])
   @@index([visibility, id])
   @@index([replyToId, createdAt])
   @@index([retweetOfId, createdAt])
+  @@index([quotedTweetId, createdAt])
 }
 
 model TweetLike {
@@ -689,4 +705,45 @@ model TweetFollow {
 
   @@unique([followerId, followingId])
   @@index([followingId, createdAt])
+}
+
+model TweetBlock {
+  id        Int      @id @default(autoincrement())
+  blockerId Int
+  blockedId Int
+  createdAt DateTime @default(now())
+
+  blocker User @relation("TweetBlocking", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked User @relation("TweetBlocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+  @@index([blockedId, createdAt])
+}
+
+model TweetMute {
+  id       Int      @id @default(autoincrement())
+  muterId  Int
+  mutedId  Int
+  createdAt DateTime @default(now())
+
+  muter User @relation("TweetMuting", fields: [muterId], references: [id], onDelete: Cascade)
+  muted User @relation("TweetMuted", fields: [mutedId], references: [id], onDelete: Cascade)
+
+  @@unique([muterId, mutedId])
+  @@index([mutedId, createdAt])
+}
+
+model TweetAsset {
+  id        Int      @id @default(autoincrement())
+  tweetId   Int
+  mediaId   String
+  pos       Int      @default(0)
+  createdAt DateTime @default(now())
+
+  tweet Tweet @relation(fields: [tweetId], references: [id], onDelete: Cascade)
+  media Media @relation(fields: [mediaId], references: [id], onDelete: Cascade)
+
+  @@unique([tweetId, mediaId])
+  @@index([tweetId, pos])
+  @@index([mediaId])
 }
